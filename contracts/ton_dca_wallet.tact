@@ -2,6 +2,38 @@ import "@stdlib/ownable";
 import "@stdlib/stoppable";
 import "./types.tact";
 
+struct JettonTransferForwardPayload {
+    is_right: Bool;
+    value: Slice as remaining;
+}
+
+message(0x0f8a7ea5) JettonTransfer {
+    query_id: Int as uint64;
+    amount: Int as coins;
+    destination: Address;
+    response_destination: Address;
+    custom_payload: Cell?;
+    forward_ton_amount: Int as coins;
+    forward_payload: JettonTransferForwardPayload;
+}
+
+message(0x7362d09c) JettonNotify {
+    queryId: Int as uint64;
+    amount: Int as coins;
+    sender: Address;
+    forward_payload: Slice as remaining;
+}
+
+message(0xd53276db) TokenExcesses {
+    queryId: Int as uint64;
+}
+
+message WithdrawJetton {
+    queryId: Int as uint64;
+    amount: Int as coins;
+    jetton_wallet: Address;
+}
+
 contract TonDcaWallet with Ownable, Stoppable {
 
     const MIN_TON_BALANCE: Int = ton("0.15");
@@ -14,6 +46,10 @@ contract TonDcaWallet with Ownable, Stoppable {
     dca_amount: Int as uint32 = 0;
     dca_interval_in_seconds: Int as uint32 = 0;
     dca_next_buy_time: Int = 0;
+
+    jetton_balances: map<Address, Int>;
+    top_uppable_jettons: map<Address, Bool>;
+    withdrawable_jettons: map<Address, Bool>;
 
     init(parent: Address, index: Int) {
         self.parent = parent;
@@ -65,31 +101,96 @@ contract TonDcaWallet with Ownable, Stoppable {
         self.reply("Resumed".asComment());
     }
 
-    external("ProcessPay") {
-        require(self.dca_next_buy_time <= now(), "Too early for buy");
+    receive(msg: JettonNotify) {
+        nativeThrowUnless(132, msg.sender == self.owner);
+        //her sender() is current contract jetton wallet
+        //@todo скорее всего тут нужна проверка на валидность jetton_wallet address
+        let currentBalance: Int? = self.jetton_balances.get(sender());
+        if(currentBalance == null){
+            self.jetton_balances.set(sender(), msg.amount);
+        }else{
+            self.jetton_balances.set(sender(), currentBalance!! + msg.amount);
+        }
 
-        acceptMessage();
+        send(SendParameters{
+            to: self.owner,
+            value: 0,
+            bounce: false,
+            mode: SendRemainingValue | SendIgnoreErrors,
+            body: "Jetton balance has been topped up".asComment()
+        });
+    }
 
-        self.dca_next_buy_time = self.dca_next_buy_time + self.dca_interval_in_seconds;
+    receive(msg: WithdrawJetton) {
+        self.requireOwner();
+        let currentBalance: Int? = self.jetton_balances.get(msg.jetton_wallet);
+        require(currentBalance != null, "Invalid jetton balance");
+        let jettonBalanceAfterWithdraw: Int = currentBalance!! - msg.amount;
+        require(jettonBalanceAfterWithdraw >= 0, "Invalid jetton balance");
+        self.jetton_balances.set(msg.jetton_wallet, jettonBalanceAfterWithdraw);
 
-//        let cell: Cell = beginCell()
-//            .storeUint(0x18, 6)
-//            .storeAddress(self.owner)
-//            .storeCoins(ton("0.3"))
-//            .storeUint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-//            .storeUint(0x706c7567, 32)
-//            .storeUint(1, 64)
-//            .storeCoins(ton("10"))
-//            .storeUint(0, 1)
-//            .endCell();
-//
+        send(SendParameters{
+                to: msg.jetton_wallet,
+                value: ton("0.1"),
+                mode: SendIgnoreErrors,
+                body: JettonTransfer {
+                    query_id: msg.queryId,
+                    amount: msg.amount,
+                    destination: sender(),
+                    response_destination: myAddress(),
+                    custom_payload: null,
+                    forward_ton_amount: 0,
+                    forward_payload: JettonTransferForwardPayload{
+                        is_right: false,
+                        value: emptySlice()
+                    }
+                }.toCell()
+            });
+
+        self.reply("Withdraw requested".asComment());
+    }
+
+    receive(msg: TokenExcesses) {
+        //@todo записать успех, а если пришел bounced<JettonTransfer> - вернуть на место баланс
+
 //        send(SendParameters{
 //            to: self.owner,
 //            value: 0,
-//            mode: SendIgnoreErrors,
-//            body: cell
+//            bounce: false,
+//            mode: SendRemainingValue | SendIgnoreErrors,
+//            body: "TokenExcesses processed successfully".asComment()
 //        });
     }
+
+//    bounced(src: bounced<JettonTransfer>) {
+//
+//    }
+
+//    external("ProcessPay") {
+//        require(self.dca_next_buy_time <= now(), "Too early for buy");
+//
+//        acceptMessage();
+//
+//        self.dca_next_buy_time = self.dca_next_buy_time + self.dca_interval_in_seconds;
+//
+////        let cell: Cell = beginCell()
+////            .storeUint(0x18, 6)
+////            .storeAddress(self.owner)
+////            .storeCoins(ton("0.3"))
+////            .storeUint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+////            .storeUint(0x706c7567, 32)
+////            .storeUint(1, 64)
+////            .storeCoins(ton("10"))
+////            .storeUint(0, 1)
+////            .endCell();
+////
+////        send(SendParameters{
+////            to: self.owner,
+////            value: 0,
+////            mode: SendIgnoreErrors,
+////            body: cell
+////        });
+//    }
 
     get fun get_settings(): WalletSettings {
         return WalletSettings{
@@ -99,6 +200,10 @@ contract TonDcaWallet with Ownable, Stoppable {
             stopped: self.stopped,
             next_buy_time: self.dca_next_buy_time
         };
+    }
+
+    get fun get_jetton_balances(): map<Address, Int> {
+        return self.jetton_balances;
     }
 
     fun requireParent() {

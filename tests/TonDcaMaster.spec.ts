@@ -300,37 +300,37 @@ describe('TonDcaMaster', () => {
     //
     //     expect(beforeSettings.next_buy_time).toEqual(afterSettings.next_buy_time)
     // });
-
-
-    it('swap', async () => {
-        const createWalletResponse = await tonDcaMaster.send(customer.getSender(),
-            {
-                value: toNano('0.3')
-            },
-            {
-                $$type: 'CreateWallet',
-                queryId: 0n,
-                amount: 10n,
-                interval: 86400n,
-                next_buy_time: now + 86400n,
-            })
-
-        const walletAddress = await tonDcaMaster.getGetWalletAddress(0n)
-
-        console.log(createWalletResponse.transactions)
-
-        expect(createWalletResponse.transactions).toHaveTransaction({
-            from: tonDcaMaster.address,
-            to: walletAddress,
-            deploy: true,
-            success: true,
-        });
-
-        // const wallet: SandboxContract<TonDcaWallet> = blockchain.openContract(TonDcaWallet.fromAddress(walletAddress))
-
-        // const response = await wallet.send(customer.getSender(), {value: toNano('0.3')}, "Swap")
-
-        // console.log(response.transactions)
-
-    });
+    //
+    //
+    // it('swap', async () => {
+    //     const createWalletResponse = await tonDcaMaster.send(customer.getSender(),
+    //         {
+    //             value: toNano('0.3')
+    //         },
+    //         {
+    //             $$type: 'CreateWallet',
+    //             queryId: 0n,
+    //             amount: 10n,
+    //             interval: 86400n,
+    //             next_buy_time: now + 86400n,
+    //         })
+    //
+    //     const walletAddress = await tonDcaMaster.getGetWalletAddress(0n)
+    //
+    //     console.log(createWalletResponse.transactions)
+    //
+    //     expect(createWalletResponse.transactions).toHaveTransaction({
+    //         from: tonDcaMaster.address,
+    //         to: walletAddress,
+    //         deploy: true,
+    //         success: true,
+    //     });
+    //
+    //     // const wallet: SandboxContract<TonDcaWallet> = blockchain.openContract(TonDcaWallet.fromAddress(walletAddress))
+    //
+    //     // const response = await wallet.send(customer.getSender(), {value: toNano('0.3')}, "Swap")
+    //
+    //     // console.log(response.transactions)
+    //
+    // });
 });

@@ -1,6 +1,7 @@
 import TonWeb from 'tonweb';
 import {mnemonicToWalletKey} from "@ton/crypto";
 import {Router, ROUTER_REVISION, ROUTER_REVISION_ADDRESS} from "@ston-fi/sdk";
+import {fromNano, toNano} from "@ton/core";
 
 async function main() {
     const phrase = 'real job scatter just poem steak enrich false peace resemble scissors arctic general cupboard bleak bomb impulse grab describe hurt favorite orange attack scissors'
@@ -44,7 +45,7 @@ async function main() {
         userWalletAddress: WALLET_ADDRESS,
         proxyTonAddress: PROXY_TON,
         // amount of the TON you want to swap
-        offerAmount: new TonWeb.utils.BN('3000000000'),
+        offerAmount: new TonWeb.utils.BN(toNano('10').toString()),
         // address of the jetton you want to receive
         askJettonAddress: JETTON0,
         // minimal amount of the jetton you want to receive as a result of the swap.
@@ -58,7 +59,8 @@ async function main() {
     });
 
     console.log({
-        to: tonToJettonTxParams.to.toString(true, true, false)
+        to: tonToJettonTxParams.to.toString(true, true, false),
+        amount: fromNano(tonToJettonTxParams.gasAmount.toNumber()),
     })
 
     const response = await wallet.methods.transfer({

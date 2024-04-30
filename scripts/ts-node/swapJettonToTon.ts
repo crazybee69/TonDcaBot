@@ -1,6 +1,7 @@
 import TonWeb from 'tonweb';
 import {mnemonicToWalletKey} from "@ton/crypto";
 import {Router, ROUTER_REVISION, ROUTER_REVISION_ADDRESS} from "@ston-fi/sdk";
+import {fromNano} from "@ton/core";
 
 async function main() {
     const phrase = 'real job scatter just poem steak enrich false peace resemble scissors arctic general cupboard bleak bomb impulse grab describe hurt favorite orange attack scissors'
@@ -26,6 +27,46 @@ async function main() {
     const WALLET_ADDRESS = '0QBza5vZDciVYS5K7pnmcJBUKQq1V4qD7ihzD0OZstqnJd5t'; // ! replace with your address
     const JETTON0 = 'kQDB8JYMzpiOxjCx7leP5nYkchF72PdbWT1LV7ym1uAedDjr'; // STON
     const PROXY_TON = 'kQAcOvXSnnOhCdLYc6up2ECYwtNNTzlmOlidBeCs5cFPV7AM'; // ProxyTON
+
+    const {
+        token: {
+            jetton: { JettonMinter },
+        },
+    } = TonWeb;
+
+
+
+    const stonJettonMaster = new JettonMinter(
+        provider,
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        {
+            address: JETTON0,
+        },
+    );
+    const stonJettonWalletAddress = await stonJettonMaster.getJettonWalletAddress(
+        new tonweb.Address('kQCkUOtE8k2vwSD0dhyJig-mvD7hVc6bJ1rxYKCA8Vkdfpec'),
+    );
+
+    // console.log(stonJettonWalletAddress.toString(true, true, false))
+    // return
+
+
+    const offerJetton = new JettonMinter(
+        provider,
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        {
+            address: PROXY_TON,
+        },
+    );
+
+    const offerJettonWalletAddress = await offerJetton.getJettonWalletAddress(
+        new tonweb.Address(WALLET_ADDRESS),
+    );
+
+    console.log(offerJettonWalletAddress.toString(true, true, false))
+    return
 
     const router = new Router(provider, {
         revision: ROUTER_REVISION.V1,
@@ -54,19 +95,20 @@ async function main() {
     });
 
     console.log({
-        to: swapTxParams.to.toString(true, true, false)
+        to: swapTxParams.to.toString(true, true, false),
+        amount: fromNano(swapTxParams.gasAmount.toNumber())
     })
 
-    const response = await wallet.methods.transfer({
-        secretKey: seed.secretKey,
-        toAddress: swapTxParams.to,
-        amount: swapTxParams.gasAmount,
-        seqno: (seqno || 1),
-        payload: swapTxParams.payload,
-        sendMode: 3,
-    }).send();
-
-    console.log({response})
+    // const response = await wallet.methods.transfer({
+    //     secretKey: seed.secretKey,
+    //     toAddress: swapTxParams.to,
+    //     amount: swapTxParams.gasAmount,
+    //     seqno: (seqno || 1),
+    //     payload: swapTxParams.payload,
+    //     sendMode: 3,
+    // }).send();
+    //
+    // console.log({response})
 }
 
 main()

@@ -3,7 +3,7 @@ import { Swapper } from '../wrappers/Swapper';
 import { NetworkProvider } from '@ton/blueprint';
 
 export async function run(provider: NetworkProvider) {
-    const swapper = provider.open(await Swapper.fromInit(557722n));
+    const swapper = provider.open(await Swapper.fromInit(180494n));
 
     await swapper.send(
         provider.sender(),
