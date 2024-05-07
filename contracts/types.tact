@@ -4,7 +4,6 @@ struct WalletSettings {
     interval: Int;
     stopped: Bool;
     next_buy_time: Int;
-//    jettonAddress: Address;
 }
 
 message InternalInitWalletSettings {
@@ -25,12 +24,4 @@ message UpdateWalletSettings {
 struct RefMsgData {
     transferred_op: Int as uint32;
     token_wallet1: Address;
-}
-
-message(0x7362d09c) StonFiTransferNotification {
-    queryId: Int as uint64;
-    op: Int as uint32;
-    jetton_amount: Int as coins;
-    from_user: Address;
-    ref_msg_data: RefMsgData;
 }

@@ -34,6 +34,19 @@ message WithdrawJetton {
     jetton_wallet: Address;
 }
 
+struct StonfiSwapForwardPayloadValue {
+    token_wallet: Address;
+    min_out: Int as coins;
+    to_address: Address;
+    referral_address: Address?;
+}
+
+struct StonfiSwapForwardPayload {
+    sum_type: String;
+    op_code: Int as uint32;
+    value: StonfiSwapForwardPayloadValue;
+}
+
 contract TonDcaWallet with Ownable, Stoppable {
 
     const MIN_TON_BALANCE: Int = ton("0.15");
@@ -166,31 +179,41 @@ contract TonDcaWallet with Ownable, Stoppable {
 //
 //    }
 
-//    external("ProcessPay") {
-//        require(self.dca_next_buy_time <= now(), "Too early for buy");
-//
-//        acceptMessage();
-//
-//        self.dca_next_buy_time = self.dca_next_buy_time + self.dca_interval_in_seconds;
-//
-////        let cell: Cell = beginCell()
-////            .storeUint(0x18, 6)
-////            .storeAddress(self.owner)
-////            .storeCoins(ton("0.3"))
-////            .storeUint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-////            .storeUint(0x706c7567, 32)
-////            .storeUint(1, 64)
-////            .storeCoins(ton("10"))
-////            .storeUint(0, 1)
-////            .endCell();
-////
-////        send(SendParameters{
-////            to: self.owner,
-////            value: 0,
-////            mode: SendIgnoreErrors,
-////            body: cell
-////        });
-//    }
+    external("ProcessPay") {
+        self.requireNotStopped();
+        require(self.dca_next_buy_time <= now(), "Too early for buy");
+
+        acceptMessage();
+
+        self.dca_next_buy_time = self.dca_next_buy_time + self.dca_interval_in_seconds;
+
+        send(SendParameters{
+            to: address(""),//@todo my jetton wallet of USDT
+            value: 0,
+            mode: SendIgnoreErrors,
+            body: JettonTransfer {
+                query_id: 0, //@todo random uin64
+                amount: self.dca_amount,
+                destination: Address,//@todo
+                response_destination: Address,//@todo
+                custom_payload: null,
+                forward_ton_amount: ton("0.265"),
+                forward_payload: JettonTransferForwardPayload {
+                    is_right: true,
+                    value: StonfiSwapForwardPayload {
+                        sum_type: "StonfiSwap",
+                        op_code: 0x25938561,
+                        value: StonfiSwapForwardPayloadValue {
+                            token_wallet: Address, //@todo The address of the router's wallet of second Jetton
+                            min_out: 1,
+                            to_address: Address, //@todo user address
+                            referral_address: null
+                        }
+                    }
+                }
+            }.toCell()
+        });
+    }
 
     get fun get_settings(): WalletSettings {
         return WalletSettings{
