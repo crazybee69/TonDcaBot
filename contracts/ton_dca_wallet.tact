@@ -31,7 +31,6 @@ message(0xd53276db) TokenExcesses {
 message WithdrawJetton {
     queryId: Int as uint64;
     amount: Int as coins;
-    jetton_wallet: Address;
 }
 
 struct StonfiSwapForwardPayloadValue {
@@ -50,6 +49,8 @@ struct StonfiSwapForwardPayload {
 contract TonDcaWallet with Ownable, Stoppable {
 
     const MIN_TON_BALANCE: Int = ton("0.15");
+    const STONFI_ROUTER_ADDRESS: Address = address("kQBsGx9ArADUrREB34W-ghgsCgBShvfUr4Jvlu-0KGc33a1n");
+    const STONFI_PROXY_TON_WALLET: Address = address("kQCdC2b1GG1saybYxCwRfEqr4WlOexsQIcYcfMYObk_477vs"); // ProxyTON Wallet
 
     owner: Address;
     parent: Address;
@@ -60,9 +61,8 @@ contract TonDcaWallet with Ownable, Stoppable {
     dca_interval_in_seconds: Int as uint32 = 0;
     dca_next_buy_time: Int = 0;
 
-    jetton_balances: map<Address, Int>;
-    top_uppable_jettons: map<Address, Bool>;
-    withdrawable_jettons: map<Address, Bool>;
+    usdt_jetton_address: Address?;
+    usdt_jetton_balance: Int as coins = 0;
 
     init(parent: Address, index: Int) {
         self.parent = parent;
@@ -116,14 +116,18 @@ contract TonDcaWallet with Ownable, Stoppable {
 
     receive(msg: JettonNotify) {
         nativeThrowUnless(132, msg.sender == self.owner);
-        //her sender() is current contract jetton wallet
-        //@todo скорее всего тут нужна проверка на валидность jetton_wallet address
-        let currentBalance: Int? = self.jetton_balances.get(sender());
-        if(currentBalance == null){
-            self.jetton_balances.set(sender(), msg.amount);
-        }else{
-            self.jetton_balances.set(sender(), currentBalance!! + msg.amount);
+
+        if(self.usdt_jetton_address == null) {
+            self.usdt_jetton_address = sender();
+        } else{
+            if(sender() != self.usdt_jetton_address!!){
+                //DCA Wallet получил какие-то токены на баланс (не USDT)
+                //@todo послать запрос своему jetton, чтобы переслал это владельцу
+                dump("Mega drive");
+            }
         }
+
+        self.usdt_jetton_balance = self.usdt_jetton_balance + msg.amount;
 
         send(SendParameters{
             to: self.owner,
@@ -136,14 +140,12 @@ contract TonDcaWallet with Ownable, Stoppable {
 
     receive(msg: WithdrawJetton) {
         self.requireOwner();
-        let currentBalance: Int? = self.jetton_balances.get(msg.jetton_wallet);
-        require(currentBalance != null, "Invalid jetton balance");
-        let jettonBalanceAfterWithdraw: Int = currentBalance!! - msg.amount;
-        require(jettonBalanceAfterWithdraw >= 0, "Invalid jetton balance");
-        self.jetton_balances.set(msg.jetton_wallet, jettonBalanceAfterWithdraw);
+        let jettonBalanceAfterWithdraw: Int = self.usdt_jetton_balance - msg.amount;
+        require(jettonBalanceAfterWithdraw >= 0, "Invalid requested amount");
+        self.usdt_jetton_balance = jettonBalanceAfterWithdraw;
 
         send(SendParameters{
-                to: msg.jetton_wallet,
+                to: self.usdt_jetton_address!!,
                 value: ton("0.1"),
                 mode: SendIgnoreErrors,
                 body: JettonTransfer {
@@ -164,6 +166,7 @@ contract TonDcaWallet with Ownable, Stoppable {
     }
 
     receive(msg: TokenExcesses) {
+        //@todo сюда будут приходить копейки TON после swap
         //@todo записать успех, а если пришел bounced<JettonTransfer> - вернуть на место баланс
 
 //        send(SendParameters{
@@ -182,20 +185,20 @@ contract TonDcaWallet with Ownable, Stoppable {
     external("ProcessPay") {
         self.requireNotStopped();
         require(self.dca_next_buy_time <= now(), "Too early for buy");
-
+        require(self.usdt_jetton_balance >= self.dca_amount, "Insufficient funds for DCA buy");
         acceptMessage();
 
         self.dca_next_buy_time = self.dca_next_buy_time + self.dca_interval_in_seconds;
 
         send(SendParameters{
-            to: address(""),//@todo my jetton wallet of USDT
+            to: self.usdt_jetton_address!!,
             value: 0,
             mode: SendIgnoreErrors,
             body: JettonTransfer {
                 query_id: 0, //@todo random uin64
                 amount: self.dca_amount,
-                destination: Address,//@todo
-                response_destination: Address,//@todo
+                destination: self.STONFI_ROUTER_ADDRESS,
+                response_destination: myAddress(),
                 custom_payload: null,
                 forward_ton_amount: ton("0.265"),
                 forward_payload: JettonTransferForwardPayload {
@@ -204,11 +207,11 @@ contract TonDcaWallet with Ownable, Stoppable {
                         sum_type: "StonfiSwap",
                         op_code: 0x25938561,
                         value: StonfiSwapForwardPayloadValue {
-                            token_wallet: Address, //@todo The address of the router's wallet of second Jetton
+                            token_wallet: self.STONFI_PROXY_TON_WALLET,
                             min_out: 1,
-                            to_address: Address, //@todo user address
+                            to_address: self.owner,
                             referral_address: null
-                        }
+                        }.toCell().asSlice()//@todo тут
                     }
                 }
             }.toCell()
@@ -221,12 +224,9 @@ contract TonDcaWallet with Ownable, Stoppable {
             amount: self.dca_amount,
             interval: self.dca_interval_in_seconds,
             stopped: self.stopped,
-            next_buy_time: self.dca_next_buy_time
+            next_buy_time: self.dca_next_buy_time,
+            usdt_balance: self.usdt_jetton_balance
         };
-    }
-
-    get fun get_jetton_balances(): map<Address, Int> {
-        return self.jetton_balances;
     }
 
     fun requireParent() {
