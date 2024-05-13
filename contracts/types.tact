@@ -4,6 +4,7 @@ struct WalletSettings {
     interval: Int;
     stopped: Bool;
     next_buy_time: Int;
+    usdt_balance: Int;
 }
 
 message InternalInitWalletSettings {

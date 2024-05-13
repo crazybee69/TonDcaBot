@@ -25,6 +25,7 @@
         "@ston-fi/sdk": "^0.4.0",
         "@tact-lang/emulator": "^4.2.3",
         "@tact-lang/ton-abi": "^0.0.3",
+        "dotenv": "^16.4.5",
         "ton-crypto": "^3.2.0",
         "tonweb": "^0.0.66"
     }

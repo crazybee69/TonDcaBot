@@ -2,6 +2,11 @@ import "@stdlib/ownable";
 import "@stdlib/stoppable";
 import "./types.tact";
 
+message InitUsdtJettonAddress {
+    queryId: Int as uint64;
+    usdt_jetton_address: Address;
+}
+
 struct JettonTransferForwardPayload {
     is_right: Bool;
     value: Slice as remaining;
@@ -46,15 +51,19 @@ struct StonfiSwapForwardPayload {
     value: StonfiSwapForwardPayloadValue;
 }
 
+const JETTON_TRANSFER_OP_CODE: Int = 0x0f8a7ea5;
+const STONFI_SWAP_OK_REF_OP_CODE: Int = 0x2283c2a0;
+const STONFI_SWAP_OP_CODE: Int = 0x25938561;
+const STONFI_SWAP_FORWARD_TON_AMOUNT: Int = ton("0.265");
+
 contract TonDcaWallet with Ownable, Stoppable {
 
-    const MIN_TON_BALANCE: Int = ton("0.15");
+    const MIN_TON_BALANCE: Int = ton("0.05");
     const STONFI_ROUTER_ADDRESS: Address = address("kQBsGx9ArADUrREB34W-ghgsCgBShvfUr4Jvlu-0KGc33a1n");
     const STONFI_PROXY_TON_WALLET: Address = address("kQCdC2b1GG1saybYxCwRfEqr4WlOexsQIcYcfMYObk_477vs"); // ProxyTON Wallet
 
     owner: Address;
-    parent: Address;
-    index: Int as uint32;
+    master: Address;
     stopped: Bool;
 
     dca_amount: Int as uint32 = 0;
@@ -64,15 +73,14 @@ contract TonDcaWallet with Ownable, Stoppable {
     usdt_jetton_address: Address?;
     usdt_jetton_balance: Int as coins = 0;
 
-    init(parent: Address, index: Int) {
-        self.parent = parent;
-        self.owner = sender();
-        self.index = index;
+    init(master: Address, owner: Address) {
+        self.master = master;
+        self.owner = owner;
         self.stopped = false;
     }
 
     receive(msg: InternalInitWalletSettings) {
-        self.requireParent();
+        self.requireMaster();
         self.validateAmount(msg.amount);
         self.validateInterval(msg.interval);
 
@@ -92,6 +100,11 @@ contract TonDcaWallet with Ownable, Stoppable {
             mode: SendIgnoreErrors,
             body: "DCA Strategy created".asComment()
         });
+    }
+
+    receive(msg: InitUsdtJettonAddress) {
+        self.requireOwner();
+        self.usdt_jetton_address = msg.usdt_jetton_address;
     }
 
     receive(msg: UpdateWalletSettings) {
@@ -115,27 +128,29 @@ contract TonDcaWallet with Ownable, Stoppable {
     }
 
     receive(msg: JettonNotify) {
-        nativeThrowUnless(132, msg.sender == self.owner);
-
-        if(self.usdt_jetton_address == null) {
-            self.usdt_jetton_address = sender();
-        } else{
-            if(sender() != self.usdt_jetton_address!!){
-                //DCA Wallet получил какие-то токены на баланс (не USDT)
-                //@todo послать запрос своему jetton, чтобы переслал это владельцу
-                dump("Mega drive");
+        if(sender() == self.STONFI_PROXY_TON_WALLET && msg.sender == self.STONFI_ROUTER_ADDRESS){
+            let swapOpCode: Int = msg.forward_payload.loadUint(32);
+            if(swapOpCode == STONFI_SWAP_OK_REF_OP_CODE) {
+                self.dca_next_buy_time = self.dca_next_buy_time + self.dca_interval_in_seconds;
             }
+            return;
         }
 
-        self.usdt_jetton_balance = self.usdt_jetton_balance + msg.amount;
+        if(self.usdt_jetton_address == null) {
+            return;
+        }
 
-        send(SendParameters{
-            to: self.owner,
-            value: 0,
-            bounce: false,
-            mode: SendRemainingValue | SendIgnoreErrors,
-            body: "Jetton balance has been topped up".asComment()
-        });
+        if(sender() == self.usdt_jetton_address!! && msg.sender == self.owner) {
+            self.usdt_jetton_balance = self.usdt_jetton_balance + msg.amount;
+
+            send(SendParameters{
+                to: self.owner,
+                value: 0,
+                bounce: false,
+                mode: SendRemainingValue | SendIgnoreErrors,
+                body: "Jetton balance has been topped up".asComment()
+            });
+        }
     }
 
     receive(msg: WithdrawJetton) {
@@ -160,27 +175,8 @@ contract TonDcaWallet with Ownable, Stoppable {
                         value: emptySlice()
                     }
                 }.toCell()
-            });
-
-        self.reply("Withdraw requested".asComment());
+        });
     }
-
-    receive(msg: TokenExcesses) {
-        //@todo сюда будут приходить копейки TON после swap
-        //@todo записать успех, а если пришел bounced<JettonTransfer> - вернуть на место баланс
-
-//        send(SendParameters{
-//            to: self.owner,
-//            value: 0,
-//            bounce: false,
-//            mode: SendRemainingValue | SendIgnoreErrors,
-//            body: "TokenExcesses processed successfully".asComment()
-//        });
-    }
-
-//    bounced(src: bounced<JettonTransfer>) {
-//
-//    }
 
     external("ProcessPay") {
         self.requireNotStopped();
@@ -188,34 +184,7 @@ contract TonDcaWallet with Ownable, Stoppable {
         require(self.usdt_jetton_balance >= self.dca_amount, "Insufficient funds for DCA buy");
         acceptMessage();
 
-        self.dca_next_buy_time = self.dca_next_buy_time + self.dca_interval_in_seconds;
-
-        send(SendParameters{
-            to: self.usdt_jetton_address!!,
-            value: 0,
-            mode: SendIgnoreErrors,
-            body: JettonTransfer {
-                query_id: 0, //@todo random uin64
-                amount: self.dca_amount,
-                destination: self.STONFI_ROUTER_ADDRESS,
-                response_destination: myAddress(),
-                custom_payload: null,
-                forward_ton_amount: ton("0.265"),
-                forward_payload: JettonTransferForwardPayload {
-                    is_right: true,
-                    value: StonfiSwapForwardPayload {
-                        sum_type: "StonfiSwap",
-                        op_code: 0x25938561,
-                        value: StonfiSwapForwardPayloadValue {
-                            token_wallet: self.STONFI_PROXY_TON_WALLET,
-                            min_out: 1,
-                            to_address: self.owner,
-                            referral_address: null
-                        }.toCell().asSlice()//@todo тут
-                    }
-                }
-            }.toCell()
-        });
+        self.requestStonfiSwap(randomInt(), self.dca_amount);
     }
 
     get fun get_settings(): WalletSettings {
@@ -229,8 +198,38 @@ contract TonDcaWallet with Ownable, Stoppable {
         };
     }
 
-    fun requireParent() {
-        require(sender() == self.parent, "Parent Only");
+    fun requestStonfiSwap(queryId: Int, amount: Int) {
+        let swapPayload: Cell = beginCell()
+            .storeUint(STONFI_SWAP_OP_CODE, 32)
+            .storeAddress(self.STONFI_PROXY_TON_WALLET)
+            .storeCoins(1)
+            .storeAddress(self.owner)
+            .storeUint(1, 1)//.storeUint(0, 1) - referral_address: null
+            .storeAddress(myAddress())
+            .endCell();
+
+        let body: Cell = beginCell()
+            .storeUint(JETTON_TRANSFER_OP_CODE, 32)//op_code
+            .storeUint(queryId, 64)//query_id
+            .storeCoins(amount)//jetton_amount
+            .storeAddress(self.STONFI_ROUTER_ADDRESS)//send_to
+            .storeAddress(self.owner)//excess_to //.storeUint(0, 2)//пустой адрес - excess_to
+            .storeUint(0, 1)//custom_payload: null
+            .storeCoins(STONFI_SWAP_FORWARD_TON_AMOUNT)//forward_ton_amount
+            .storeUint(1, 1)//has_forward_payload: true
+            .storeRef(swapPayload)//forward_payload
+            .endCell();
+
+         send(SendParameters{
+            to: self.usdt_jetton_address!!,
+            value: 0,
+            mode: SendRemainingValue | SendIgnoreErrors,
+            body: body
+        });
+    }
+
+    fun requireMaster() {
+        require(sender() == self.master, "Master Only");
     }
 
     fun validateAmount(amount: Int) {
