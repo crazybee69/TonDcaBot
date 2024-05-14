@@ -21,23 +21,23 @@ export async function run(provider: NetworkProvider) {
 
     console.log('Master deployed. Owner:', await tonDcaMaster.getOwner(), 'Address: ', tonDcaMaster.address.toString());
 
-    const now = BigInt(Math.floor(new Date().getTime() / 1000))
-
-    await tonDcaMaster.send(
-        provider.sender(),
-        {
-            value: toNano('0.5'),
-        },
-        {
-            $$type: 'CreateWallet',
-            queryId: 0n,
-            amount: 10n,
-            interval: 86400n,
-            next_buy_time: now + 86400n
-        }
-    );
-
-    const tonDcaWallet = await TonDcaWallet.fromInit(tonDcaMaster.address, 0n)
-
-    await provider.waitForDeploy(tonDcaWallet.address, 50);
+    // const now = BigInt(Math.floor(new Date().getTime() / 1000))
+    //
+    // await tonDcaMaster.send(
+    //     provider.sender(),
+    //     {
+    //         value: toNano('0.5'),
+    //     },
+    //     {
+    //         $$type: 'CreateWallet',
+    //         queryId: 0n,
+    //         amount: 10n,
+    //         interval: 86400n,
+    //         next_buy_time: now + 86400n
+    //     }
+    // );
+    //
+    // const tonDcaWallet = await TonDcaWallet.fromInit(tonDcaMaster.address, provider.sender().address)
+    //
+    // await provider.waitForDeploy(tonDcaWallet.address, 50);
 }

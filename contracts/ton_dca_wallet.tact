@@ -169,7 +169,7 @@ contract TonDcaWallet with Ownable, Stoppable {
                     destination: sender(),
                     response_destination: myAddress(),
                     custom_payload: null,
-                    forward_ton_amount: 0,
+                    forward_ton_amount: 1,
                     forward_payload: JettonTransferForwardPayload{
                         is_right: false,
                         value: emptySlice()
@@ -178,13 +178,17 @@ contract TonDcaWallet with Ownable, Stoppable {
         });
     }
 
+    receive(msg: TokenExcesses) {
+        //для получения кэшбека после withdraw
+    }
+
     external("ProcessPay") {
         self.requireNotStopped();
         require(self.dca_next_buy_time <= now(), "Too early for buy");
         require(self.usdt_jetton_balance >= self.dca_amount, "Insufficient funds for DCA buy");
         acceptMessage();
 
-        self.requestStonfiSwap(randomInt(), self.dca_amount);
+        self.requestStonfiSwap(self.dca_amount);
     }
 
     get fun get_settings(): WalletSettings {
@@ -194,11 +198,12 @@ contract TonDcaWallet with Ownable, Stoppable {
             interval: self.dca_interval_in_seconds,
             stopped: self.stopped,
             next_buy_time: self.dca_next_buy_time,
-            usdt_balance: self.usdt_jetton_balance
+            usdt_balance: self.usdt_jetton_balance,
+            usdt_jetton_address: self.usdt_jetton_address
         };
     }
 
-    fun requestStonfiSwap(queryId: Int, amount: Int) {
+    fun requestStonfiSwap(amount: Int) {
         let swapPayload: Cell = beginCell()
             .storeUint(STONFI_SWAP_OP_CODE, 32)
             .storeAddress(self.STONFI_PROXY_TON_WALLET)
@@ -210,7 +215,7 @@ contract TonDcaWallet with Ownable, Stoppable {
 
         let body: Cell = beginCell()
             .storeUint(JETTON_TRANSFER_OP_CODE, 32)//op_code
-            .storeUint(queryId, 64)//query_id
+            .storeUint(999, 64)//query_id
             .storeCoins(amount)//jetton_amount
             .storeAddress(self.STONFI_ROUTER_ADDRESS)//send_to
             .storeAddress(self.owner)//excess_to //.storeUint(0, 2)//пустой адрес - excess_to
@@ -222,8 +227,8 @@ contract TonDcaWallet with Ownable, Stoppable {
 
          send(SendParameters{
             to: self.usdt_jetton_address!!,
-            value: 0,
-            mode: SendRemainingValue | SendIgnoreErrors,
+            value: ton("0.05"),
+            mode: SendIgnoreErrors,
             body: body
         });
     }

@@ -5,6 +5,7 @@ struct WalletSettings {
     stopped: Bool;
     next_buy_time: Int;
     usdt_balance: Int;
+    usdt_jetton_address: Address?;
 }
 
 message InternalInitWalletSettings {
