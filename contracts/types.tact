@@ -1,11 +1,14 @@
 struct WalletSettings {
     owner: Address;
+    master: Address;
     amount: Int;
     interval: Int;
     stopped: Bool;
     next_buy_time: Int;
     usdt_balance: Int;
     usdt_jetton_address: Address?;
+    buys_count: Int;
+    avg_buy_price: Int;
 }
 
 message InternalInitWalletSettings {
