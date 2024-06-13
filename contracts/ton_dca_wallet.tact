@@ -75,7 +75,6 @@ contract TonDcaWallet with Ownable, Stoppable, TonReceivable {
     owner: Address;
     master: Address;
     stopped: Bool;
-    seqno: Int as uint32 = 0;
 
     dca_amount: Int as uint32 = 0;
     dca_interval_in_seconds: Int as uint32 = 0;
@@ -211,13 +210,6 @@ contract TonDcaWallet with Ownable, Stoppable, TonReceivable {
     }
 
     external("ProcessPay") {
-        let hash: Int = beginCell().storeUint(msg.seqno, 32).storeUint(msg.valid_until, 32).storeRef(msg.message_parameters.toCell()).endCell().hash();
-        require(checkSignature(hash, msg.signature, self.publicKey), "Invalide Signature");
-        require(msg.seqno == self.seqno, "Invalid seqno");
-        require(now() <= msg.valid_until, "Invlid Time");
-        acceptMessage();
-        self.seqno = self.seqno + 1;
-
         self.requireNotStopped();
         require(self.dca_next_buy_time <= now(), "Too early for buy");
         require(self.usdt_jetton_balance >= self.dca_amount, "Insufficient funds for DCA buy");
