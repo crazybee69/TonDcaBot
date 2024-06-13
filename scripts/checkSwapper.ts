@@ -6,7 +6,7 @@ export async function run(provider: NetworkProvider) {
     const swapper = provider.open(await Swapper.fromInit(555n));
 
     console.log('Address:', swapper.address)
-    console.log('Balance:', fromNano(await swapper.getGetBalance()))
+    console.log('balance:', fromNano(await swapper.getGetBalance()))
     console.log('Version:', await swapper.getGetVersion())
 
     // const response = await swapper.send(

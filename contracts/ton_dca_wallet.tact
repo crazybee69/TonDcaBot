@@ -1,6 +1,7 @@
 import "@stdlib/ownable";
 import "@stdlib/stoppable";
 import "./types.tact";
+import "./traits.tact";
 
 message InitUsdtJettonAddress {
     queryId: Int as uint64;
@@ -64,15 +65,17 @@ const STONFI_SWAP_TON_AMOUNT: Int = ton("0.35");
 //@todo заменить
 const ONE_COIN: Int = 1;
 
-contract TonDcaWallet with Ownable, Stoppable {
+contract TonDcaWallet with Ownable, Stoppable, TonReceivable {
 
     const MIN_TON_BALANCE: Int = ton("0.05");
+    //@todo продумать как правильно держать эти адреса для тестнета и майннета
     const STONFI_ROUTER_ADDRESS: Address = address("kQBsGx9ArADUrREB34W-ghgsCgBShvfUr4Jvlu-0KGc33a1n");
     const STONFI_PROXY_TON_WALLET: Address = address("kQCdC2b1GG1saybYxCwRfEqr4WlOexsQIcYcfMYObk_477vs"); // ProxyTON Wallet
 
     owner: Address;
     master: Address;
     stopped: Bool;
+    seqno: Int as uint32 = 0;
 
     dca_amount: Int as uint32 = 0;
     dca_interval_in_seconds: Int as uint32 = 0;
@@ -208,6 +211,13 @@ contract TonDcaWallet with Ownable, Stoppable {
     }
 
     external("ProcessPay") {
+        let hash: Int = beginCell().storeUint(msg.seqno, 32).storeUint(msg.valid_until, 32).storeRef(msg.message_parameters.toCell()).endCell().hash();
+        require(checkSignature(hash, msg.signature, self.publicKey), "Invalide Signature");
+        require(msg.seqno == self.seqno, "Invalid seqno");
+        require(now() <= msg.valid_until, "Invlid Time");
+        acceptMessage();
+        self.seqno = self.seqno + 1;
+
         self.requireNotStopped();
         require(self.dca_next_buy_time <= now(), "Too early for buy");
         require(self.usdt_jetton_balance >= self.dca_amount, "Insufficient funds for DCA buy");
@@ -231,6 +241,10 @@ contract TonDcaWallet with Ownable, Stoppable {
             mode: SendIgnoreErrors,
             body: "Something went wrong with DCA buy process".asComment()
         });
+    }
+
+    get fun seqno(): Int {
+        return self.seqno;
     }
 
     get fun get_settings(): WalletSettings {
